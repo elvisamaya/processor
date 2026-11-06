@@ -9,7 +9,7 @@ VVP      := vvp -n
 PY       := python3
 BUILD    := build
 
-UNITS    := alu
+UNITS    := alu regfile
 
 .PHONY: all test unit clean
 .SECONDARY:
@@ -22,6 +22,7 @@ test: unit
 
 # ---------------------------------------------------------------- unit tests
 RTL_alu     := rtl/alu.v
+RTL_regfile := rtl/regfile.v
 
 unit: $(addprefix unit-,$(UNITS))
 
