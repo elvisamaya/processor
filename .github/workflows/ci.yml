@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Icarus Verilog and Verilator
+        run: sudo apt-get update && sudo apt-get install -y iverilog verilator
+
+      - name: Lint (Verilator -Wall)
+        run: make lint
+
+      - name: Unit tests + every program on every core
+        run: make test
+
+      - name: CPI table
+        run: make -s cpi >> "$GITHUB_STEP_SUMMARY"

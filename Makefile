@@ -8,6 +8,7 @@
 #   make cpi          CPI table: single-cycle vs pipeline with/without forwarding
 #   make trace P=hazards        cycle-by-cycle pipeline trace for one program
 #   make wave P=fib CORE=pipe   dump + open a waveform for one program
+#   make lint         Verilator -Wall lint
 #   make clean
 
 IVERILOG := iverilog -g2012 -Wall -Wno-timescale -I rtl
@@ -24,7 +25,7 @@ ALLPROGS := $(PROGRAMS) $(RANDOMS)
 COMMON_RTL := rtl/alu.v rtl/regfile.v rtl/imm_gen.v rtl/decoder.v rtl/branch_cmp.v \
               rtl/lsu.v rtl/imem.v rtl/dmem.v
 
-.PHONY: all test unit single pipe pipe-nofwd cpi trace wave clean
+.PHONY: all test unit single pipe pipe-nofwd cpi lint trace wave clean
 .SECONDARY:
 
 all: test
@@ -105,6 +106,11 @@ trace: $(BUILD)/core_pipe.vvp $(BUILD)/$(P).regs
 wave: $(BUILD)/core_$(CORE).vvp $(BUILD)/$(P).regs
 	$(VVP) $(BUILD)/core_$(CORE).vvp +prog=$(BUILD)/$(P) +vcd
 	gtkwave $(BUILD)/$(P).vcd &
+
+# ---------------------------------------------------------------- lint
+lint:
+	verilator --lint-only -Wall -Irtl rtl/core_single.v $(COMMON_RTL) --top-module core_single
+	verilator --lint-only -Wall -Irtl rtl/core_pipe.v   $(COMMON_RTL) --top-module core_pipe
 
 $(BUILD):
 	@mkdir -p $(BUILD)
