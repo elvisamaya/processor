@@ -1,8 +1,9 @@
 # RV32I processor: build and test flow
 #
-#   make         run all tests
-#   make unit    unit tests: ALU, register file, decoder
-#   make golden  assemble every program and run it on the golden model
+#   make              run everything (unit tests + every program on the core)
+#   make unit         unit tests: ALU, register file, decoder
+#   make single       all programs on the single-cycle core
+#   make wave P=fib   dump + open a waveform for one program
 #   make clean
 
 IVERILOG := iverilog -g2012 -Wall -Wno-timescale -I rtl
@@ -14,12 +15,15 @@ UNITS    := alu regfile decode
 PROGRAMS := arith branches memory fib sort hazards
 ALLPROGS := $(PROGRAMS)
 
-.PHONY: all test unit golden clean
+COMMON_RTL := rtl/alu.v rtl/regfile.v rtl/imm_gen.v rtl/decoder.v rtl/branch_cmp.v \
+              rtl/lsu.v rtl/imem.v rtl/dmem.v
+
+.PHONY: all test unit single wave clean
 .SECONDARY:
 
 all: test
 
-test: unit golden
+test: unit single
 	@echo ""
 	@echo "All tests passed."
 
@@ -46,9 +50,30 @@ $(BUILD)/%.regs: $(BUILD)/%.hex scripts/rviss.py
 
 EXPECTED := $(addprefix $(BUILD)/,$(addsuffix .regs,$(ALLPROGS)))
 
-golden: $(addprefix $(BUILD)/,$(addsuffix .hex,$(ALLPROGS)))
-	@echo "=== golden model ==="
-	@for p in $(ALLPROGS); do $(PY) scripts/rviss.py $(BUILD)/$$p.hex --out $(BUILD)/$$p; done
+# ---------------------------------------------------------------- core simulations
+# run every program on one core; fail if any program fails
+define run_core
+	@echo "=== $(1) ==="
+	@rm -f $(BUILD)/$(1).log
+	@for p in $(ALLPROGS); do \
+		$(VVP) $(BUILD)/$(1).vvp +prog=$(BUILD)/$$p > $(BUILD)/$(1)_$$p.log; \
+		grep -h "ERROR" $(BUILD)/$(1)_$$p.log; \
+		grep -h "RESULT" $(BUILD)/$(1)_$$p.log | tee -a $(BUILD)/$(1).log; \
+		grep -q "TEST PASSED" $(BUILD)/$(1)_$$p.log || { echo "FAILED: $$p on $(1)"; exit 1; }; \
+	done
+endef
+
+$(BUILD)/core_single.vvp: tb/tb_core.v rtl/core_single.v $(COMMON_RTL) | $(BUILD)
+	@$(IVERILOG) -o $@ $^
+
+single: $(BUILD)/core_single.vvp $(EXPECTED)
+	$(call run_core,core_single)
+
+# ---------------------------------------------------------------- waveforms
+P    ?= fib
+wave: $(BUILD)/core_single.vvp $(BUILD)/$(P).regs
+	$(VVP) $(BUILD)/core_single.vvp +prog=$(BUILD)/$(P) +vcd
+	gtkwave $(BUILD)/$(P).vcd &
 
 $(BUILD):
 	@mkdir -p $(BUILD)
