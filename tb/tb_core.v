@@ -6,7 +6,12 @@
 //
 // Plusargs:  +prog=build/fib   (expects fib.hex, fib.regs, fib.dmem, fib.count)
 // Defines:   -DPIPELINE selects core_pipe instead of core_single
+//            -DFORWARDING=0|1 for core_pipe
 `timescale 1ns/1ps
+
+`ifndef FORWARDING
+`define FORWARDING 1
+`endif
 
 module tb_core;
     localparam integer MAX_CYCLES = 200000;
@@ -18,7 +23,7 @@ module tb_core;
     wire [31:0] cycles, instret;
 
 `ifdef PIPELINE
-    core_pipe dut (
+    core_pipe #(.FORWARDING(`FORWARDING)) dut (
 `else
     core_single dut (
 `endif

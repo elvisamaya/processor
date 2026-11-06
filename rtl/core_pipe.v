@@ -11,10 +11,14 @@
 // still moving through the pipeline.
 //
 // Hazard handling
-//  * Data hazards: decode stalls until the producing instruction has reached
-//    write-back (the register file writes through, so the value is visible
-//    in that same cycle). Correct, but slow: a result used by the very next
-//    instruction costs 2 bubbles.
+//  * Data hazards
+//      FORWARDING = 0: decode stalls until the producing instruction has
+//                      reached write-back (the register file writes through,
+//                      so the value is visible in that same cycle).
+//      FORWARDING = 1: results are bypassed from the MEM and WB stages
+//                      straight into the ALU inputs. Only a load followed
+//                      immediately by a user of its result must stall
+//                      (1 bubble), because load data isn't ready until MEM.
 //  * Control hazards
 //      Branches and jumps resolve in EX. The pipeline predicts "not taken"
 //      and keeps fetching sequentially; on a taken branch or jump the two
@@ -25,7 +29,9 @@
 `default_nettype none
 `include "rv32i_defs.vh"
 
-module core_pipe (
+module core_pipe #(
+    parameter integer FORWARDING = 1
+) (
     input  wire        clk,
     input  wire        rst_n,
     output reg         halted,
@@ -112,14 +118,23 @@ module core_pipe (
     wire dep_mem = mem_writes && ((id_uses_rs1 && exmem_rd == id_rs1) ||
                                   (id_uses_rs2 && exmem_rd == id_rs2));
 
-    wire stall = ifid_valid && (dep_ex || dep_mem);
+    wire load_use = dep_ex && idex_mem_read;    // load result needed next cycle
+
+    wire stall = ifid_valid && ((FORWARDING != 0) ? load_use : (dep_ex || dep_mem));
 
     // =====================================================================
     // EX: execute
     // =====================================================================
-    // operands were read in decode; stalling guarantees they are up to date
-    wire [31:0] ex_rs1 = idex_rv1;
-    wire [31:0] ex_rs2 = idex_rv2;
+    // ---- forwarding (bypass) ----
+    // The newest value wins: EX/MEM (1 instruction ahead) before MEM/WB (2 ahead).
+    wire [31:0] wb_data;
+    wire fwd_a_mem = (FORWARDING != 0) && mem_writes && (exmem_rd == idex_rs1);
+    wire fwd_b_mem = (FORWARDING != 0) && mem_writes && (exmem_rd == idex_rs2);
+    wire fwd_a_wb  = (FORWARDING != 0) && wb_we && (memwb_rd != 5'd0) && (memwb_rd == idex_rs1);
+    wire fwd_b_wb  = (FORWARDING != 0) && wb_we && (memwb_rd != 5'd0) && (memwb_rd == idex_rs2);
+
+    wire [31:0] ex_rs1 = fwd_a_mem ? exmem_result : fwd_a_wb ? wb_data : idex_rv1;
+    wire [31:0] ex_rs2 = fwd_b_mem ? exmem_result : fwd_b_wb ? wb_data : idex_rv2;
 
     wire [31:0] alu_a = (idex_a_sel == `A_PC)   ? idex_pc :
                         (idex_a_sel == `A_ZERO) ? 32'd0   : ex_rs1;
@@ -153,6 +168,7 @@ module core_pipe (
     // =====================================================================
     // WB: write-back (register file write happens via wb_we above)
     // =====================================================================
+    assign wb_data = memwb_data;
 
     // =====================================================================
     // Pipeline advance
