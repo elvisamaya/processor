@@ -1,7 +1,7 @@
 # RV32I processor: build and test flow
 #
 #   make        run all tests
-#   make unit   unit tests
+#   make unit   unit tests: ALU, register file, decoder
 #   make clean
 
 IVERILOG := iverilog -g2012 -Wall -Wno-timescale -I rtl
@@ -9,7 +9,7 @@ VVP      := vvp -n
 PY       := python3
 BUILD    := build
 
-UNITS    := alu regfile
+UNITS    := alu regfile decode
 
 .PHONY: all test unit clean
 .SECONDARY:
@@ -23,6 +23,7 @@ test: unit
 # ---------------------------------------------------------------- unit tests
 RTL_alu     := rtl/alu.v
 RTL_regfile := rtl/regfile.v
+RTL_decode  := rtl/imm_gen.v rtl/decoder.v
 
 unit: $(addprefix unit-,$(UNITS))
 
