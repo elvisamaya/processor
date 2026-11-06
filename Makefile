@@ -1,6 +1,7 @@
 # RV32I processor: build and test flow
 #
 #   make        run all tests
+#   make unit   unit tests
 #   make clean
 
 IVERILOG := iverilog -g2012 -Wall -Wno-timescale -I rtl
@@ -8,7 +9,7 @@ VVP      := vvp -n
 PY       := python3
 BUILD    := build
 
-UNITS    := 
+UNITS    := alu
 
 .PHONY: all test unit clean
 .SECONDARY:
@@ -20,7 +21,7 @@ test: unit
 	@echo "All tests passed."
 
 # ---------------------------------------------------------------- unit tests
-
+RTL_alu     := rtl/alu.v
 
 unit: $(addprefix unit-,$(UNITS))
 
