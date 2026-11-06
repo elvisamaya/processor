@@ -1,5 +1,5 @@
 // tb_regfile.v - register file: x0 behaviour, write/read-back,
-// and a random test against a reference array.
+// write-through, and a random test against a reference array.
 `timescale 1ns/1ps
 
 module tb_regfile;
@@ -8,7 +8,7 @@ module tb_regfile;
     reg  [31:0] wdata = 0;
     wire [31:0] rdata1, rdata2;
 
-    regfile dut (.clk(clk), .we(we), .waddr(waddr), .wdata(wdata),
+    regfile #(.BYPASS(1)) dut (.clk(clk), .we(we), .waddr(waddr), .wdata(wdata),
                  .raddr1(raddr1), .raddr2(raddr2), .rdata1(rdata1), .rdata2(rdata2));
 
     always #5 clk = ~clk;
@@ -44,13 +44,19 @@ module tb_regfile;
             expect_eq(rdata2, model[31 - i], "read-back port 2");
         end
 
-        // 3. random reads and writes (a write shows up on the next cycle)
+        // 3. write-through: reading the register being written returns the new value
+        @(negedge clk); we = 1; waddr = 5; wdata = 32'hCAFE_F00D; raddr1 = 5; raddr2 = 6; #1;
+        expect_eq(rdata1, 32'hCAFE_F00D, "write-through");
+        expect_eq(rdata2, model[6], "unrelated register during write");
+        model[5] = 32'hCAFE_F00D;
+
+        // 4. random reads and writes
         for (i = 0; i < 5000; i = i + 1) begin
             @(negedge clk);
             we = $random(seed); waddr = $random(seed); wdata = $random(seed);
             raddr1 = $random(seed); raddr2 = $random(seed); #1;
-            expect_eq(rdata1, (raddr1 == 0) ? 0 : model[raddr1], "random port 1");
-            expect_eq(rdata2, (raddr2 == 0) ? 0 : model[raddr2], "random port 2");
+            expect_eq(rdata1, (raddr1 == 0) ? 0 : (we && waddr == raddr1) ? wdata : model[raddr1], "random port 1");
+            expect_eq(rdata2, (raddr2 == 0) ? 0 : (we && waddr == raddr2) ? wdata : model[raddr2], "random port 2");
             if (we && waddr != 0) model[waddr] = wdata;
         end
 

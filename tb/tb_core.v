@@ -5,6 +5,7 @@
 //   - the number of instructions retired
 //
 // Plusargs:  +prog=build/fib   (expects fib.hex, fib.regs, fib.dmem, fib.count)
+// Defines:   -DPIPELINE selects core_pipe instead of core_single
 `timescale 1ns/1ps
 
 module tb_core;
@@ -16,10 +17,52 @@ module tb_core;
     wire        halted, illegal_seen;
     wire [31:0] cycles, instret;
 
+`ifdef PIPELINE
+    core_pipe dut (
+`else
     core_single dut (
+`endif
         .clk(clk), .rst_n(rst_n), .halted(halted), .illegal_seen(illegal_seen),
         .cycles(cycles), .instret(instret)
     );
+
+`ifdef PIPELINE
+    // +trace: print which instruction (by PC) occupies each stage, every cycle.
+    // "--" is an empty slot (bubble).
+    function [8*6-1:0] slot(input valid, input [31:0] pc);
+        slot = valid ? {"  ", hex4(pc)} : "    --";
+    endfunction
+    function [8*4-1:0] hex4(input [31:0] v);
+        integer k; reg [3:0] nib;
+        begin
+            for (k = 0; k < 4; k = k + 1) begin
+                nib = v >> (4 * (3 - k));
+                hex4[8*(3-k) +: 8] = (nib < 10) ? ("0" + nib) : ("a" + nib - 10);
+            end
+        end
+    endfunction
+    reg [31:0] exmem_pc_t, memwb_pc_t;     // PCs tracked for display only
+    always @(posedge clk) begin
+        if (!dut.halted) begin
+            memwb_pc_t <= exmem_pc_t;
+            exmem_pc_t <= dut.idex_pc;
+        end
+    end
+    always @(negedge clk) begin
+        if ($test$plusargs("trace") && rst_n && !dut.halted)
+            $display("%5d |%s |%s |%s |%s |%s | %0s%0s",
+                     dut.cycles,
+                     slot(!dut.fetch_stop, dut.pc),
+                     slot(dut.ifid_valid,  dut.ifid_pc),
+                     slot(dut.idex_valid,  dut.idex_pc),
+                     slot(dut.exmem_valid, exmem_pc_t),
+                     slot(dut.memwb_valid, memwb_pc_t),
+                     dut.stall ? "stall (load-use / RAW) " : "",
+                     dut.ex_redirect ? "taken -> flush IF,ID" : "");
+    end
+    initial if ($test$plusargs("trace"))
+        $display("cycle |    IF |    ID |    EX |   MEM |    WB |");
+`endif
 
     reg [31:0]   exp_regs  [0:31];
     reg [31:0]   exp_dmem  [0:1023];

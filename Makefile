@@ -1,9 +1,11 @@
 # RV32I processor: build and test flow
 #
-#   make              run everything (unit tests + every program on the core)
+#   make              run everything (unit tests + every program on every core)
 #   make unit         unit tests: ALU, register file, decoder
 #   make single       all programs on the single-cycle core
-#   make wave P=fib   dump + open a waveform for one program
+#   make pipe         all programs on the 5-stage pipeline
+#   make trace P=hazards        cycle-by-cycle pipeline trace for one program
+#   make wave P=fib CORE=pipe   dump + open a waveform for one program
 #   make clean
 
 IVERILOG := iverilog -g2012 -Wall -Wno-timescale -I rtl
@@ -18,12 +20,12 @@ ALLPROGS := $(PROGRAMS)
 COMMON_RTL := rtl/alu.v rtl/regfile.v rtl/imm_gen.v rtl/decoder.v rtl/branch_cmp.v \
               rtl/lsu.v rtl/imem.v rtl/dmem.v
 
-.PHONY: all test unit single wave clean
+.PHONY: all test unit single pipe trace wave clean
 .SECONDARY:
 
 all: test
 
-test: unit single
+test: unit single pipe
 	@echo ""
 	@echo "All tests passed."
 
@@ -69,10 +71,20 @@ $(BUILD)/core_single.vvp: tb/tb_core.v rtl/core_single.v $(COMMON_RTL) | $(BUILD
 single: $(BUILD)/core_single.vvp $(EXPECTED)
 	$(call run_core,core_single)
 
-# ---------------------------------------------------------------- waveforms
+$(BUILD)/core_pipe.vvp: tb/tb_core.v rtl/core_pipe.v $(COMMON_RTL) | $(BUILD)
+	@$(IVERILOG) -DPIPELINE -o $@ $^
+
+pipe: $(BUILD)/core_pipe.vvp $(EXPECTED)
+	$(call run_core,core_pipe)
+
+# ---------------------------------------------------------------- trace / waveforms
 P    ?= fib
-wave: $(BUILD)/core_single.vvp $(BUILD)/$(P).regs
-	$(VVP) $(BUILD)/core_single.vvp +prog=$(BUILD)/$(P) +vcd
+CORE ?= pipe
+trace: $(BUILD)/core_pipe.vvp $(BUILD)/$(P).regs
+	@$(VVP) $(BUILD)/core_pipe.vvp +prog=$(BUILD)/$(P) +trace
+
+wave: $(BUILD)/core_$(CORE).vvp $(BUILD)/$(P).regs
+	$(VVP) $(BUILD)/core_$(CORE).vvp +prog=$(BUILD)/$(P) +vcd
 	gtkwave $(BUILD)/$(P).vcd &
 
 $(BUILD):
